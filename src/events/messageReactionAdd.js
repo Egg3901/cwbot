@@ -8,6 +8,8 @@ const { Events } = require('discord.js');
 const ticketConfig = require('../modules/tickets/ticketConfig');
 const welcomeConfig = require('../modules/welcome/welcomeConfig');
 const { createTicketSelectionUI } = require('../utils/ticketUI');
+const { welcomeRepository } = require('../database/repositories');
+const { getWelcomeModule, getTicketIntroMessages } = require('../services');
 
 module.exports = {
     name: Events.MessageReactionAdd,
@@ -40,8 +42,8 @@ module.exports = {
 
         // Handle welcome verification
         if (emojiName === '✅' || reaction.emoji.toString() === welcomeConfig.verifyEmoji) {
-            const welcomeModule = client.modules.get('welcome');
-            if (welcomeModule && client.welcomeMessages?.has(reaction.message.id)) {
+            if (welcomeRepository.isWelcomeMessage(reaction.message.id)) {
+                const welcomeModule = getWelcomeModule();
                 await welcomeModule.handleVerification(reaction, user);
                 return;
             }
@@ -49,7 +51,8 @@ module.exports = {
 
         // Handle ticket creation
         if (emojiName === '🎫' || reaction.emoji.toString() === '🎫') {
-            const isIntroMessage = client.ticketIntroMessages?.has(reaction.message.id) ||
+            const ticketIntroMessages = getTicketIntroMessages();
+            const isIntroMessage = ticketIntroMessages.has(reaction.message.id) ||
                 (reaction.message.author?.id === client.user.id &&
                  reaction.message.embeds?.[0]?.title?.includes(ticketConfig.intro.title));
 

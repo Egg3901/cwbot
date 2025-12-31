@@ -8,16 +8,21 @@
 const TicketManager = require('./ticketManager');
 const ticketConfig = require('./ticketConfig');
 const {
-    EmbedBuilder,
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
     ModalBuilder,
     TextInputBuilder,
     TextInputStyle,
-    StringSelectMenuBuilder
 } = require('discord.js');
-const config = require('../../config/config');
+const { EMOJIS, TIMEOUTS } = require('../../constants');
+const { logError, logInfo } = require('../../utils/errorHandler');
+
+/**
+ * Module-local ticket manager reference
+ * @type {TicketManager|null}
+ */
+let ticketManager = null;
 
 module.exports = {
     name: 'tickets',
@@ -28,18 +33,24 @@ module.exports = {
      * @param {Client} client - Discord client
      */
     init(client) {
-        client.ticketManager = new TicketManager(client);
-        console.log('[Tickets] Module initialized');
+        ticketManager = new TicketManager(client);
+        logInfo('Tickets', 'Module initialized');
+    },
+
+    /**
+     * Get the ticket manager instance
+     * @returns {TicketManager}
+     */
+    getTicketManager() {
+        return ticketManager;
     },
 
     /**
      * Handle ticket-related button interactions
      * @param {ButtonInteraction} interaction - The button interaction
-     * @param {Client} client - Discord client
      */
-    async handleButton(interaction, client) {
+    async handleButton(interaction) {
         const { customId } = interaction;
-        const ticketManager = client.ticketManager;
 
         // Claim ticket
         if (customId === ticketConfig.buttons.claim) {
@@ -47,7 +58,7 @@ module.exports = {
             if (!result.success) {
                 return interaction.reply({ content: result.message, ephemeral: true });
             }
-            return interaction.reply({ content: '✅ You have claimed this ticket.', ephemeral: true });
+            return interaction.reply({ content: `${EMOJIS.SUCCESS} You have claimed this ticket.`, ephemeral: true });
         }
 
         // Close ticket - show confirmation
@@ -74,7 +85,7 @@ module.exports = {
         // Confirm close
         if (customId === ticketConfig.buttons.confirmClose) {
             await ticketManager.closeTicket(interaction.channel, interaction.member);
-            return interaction.update({ content: '🔒 Ticket closed.', components: [] });
+            return interaction.update({ content: `${EMOJIS.CLOSE} Ticket closed.`, components: [] });
         }
 
         // Cancel close
@@ -90,7 +101,7 @@ module.exports = {
             // Send as file attachment
             const buffer = Buffer.from(transcript, 'utf-8');
             return interaction.editReply({
-                content: '📝 Transcript generated.',
+                content: `${EMOJIS.TRANSCRIPT} Transcript generated.`,
                 files: [{
                     attachment: buffer,
                     name: `transcript-${interaction.channel.name}.txt`
@@ -100,19 +111,18 @@ module.exports = {
 
         // Delete ticket
         if (customId === ticketConfig.buttons.delete) {
-            await interaction.reply({ content: '🗑️ Deleting ticket in 5 seconds...', ephemeral: true });
+            await interaction.reply({ content: `${EMOJIS.DELETE} Deleting ticket in 5 seconds...`, ephemeral: true });
             setTimeout(async () => {
                 await ticketManager.deleteTicket(interaction.channel);
-            }, 5000);
+            }, TIMEOUTS.TICKET_DELETE_DELAY);
         }
     },
 
     /**
      * Handle ticket creation modal submission
      * @param {ModalSubmitInteraction} interaction - The modal interaction
-     * @param {Client} client - Discord client
      */
-    async handleModal(interaction, client) {
+    async handleModal(interaction) {
         if (interaction.customId !== ticketConfig.modals.create) return;
 
         const subject = interaction.fields.getTextInputValue('ticket_subject');
@@ -122,7 +132,7 @@ module.exports = {
         await interaction.deferReply({ ephemeral: true });
 
         try {
-            const { channel } = await client.ticketManager.createTicket({
+            const { channel } = await ticketManager.createTicket({
                 guild: interaction.guild,
                 member: interaction.member,
                 category: category,
@@ -133,12 +143,12 @@ module.exports = {
             });
 
             await interaction.editReply({
-                content: `✅ ${ticketConfig.messages.ticketCreated}\n\nYour ticket: ${channel}`
+                content: `${EMOJIS.SUCCESS} ${ticketConfig.messages.ticketCreated}\n\nYour ticket: ${channel}`
             });
         } catch (error) {
-            console.error('[Tickets] Error creating ticket:', error);
+            logError('Tickets', 'Error creating ticket', error);
             await interaction.editReply({
-                content: '❌ Failed to create ticket. Please try again.'
+                content: `${EMOJIS.ERROR} Failed to create ticket. Please try again.`
             });
         }
     },
@@ -146,9 +156,8 @@ module.exports = {
     /**
      * Handle select menu for ticket category selection
      * @param {StringSelectMenuInteraction} interaction - The select menu interaction
-     * @param {Client} client - Discord client
      */
-    async handleSelectMenu(interaction, client) {
+    async handleSelectMenu(interaction) {
         if (!interaction.customId.startsWith('ticket_category')) return;
 
         const category = interaction.values[0];

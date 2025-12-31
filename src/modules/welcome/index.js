@@ -8,6 +8,9 @@
 const { EmbedBuilder } = require('discord.js');
 const welcomeConfig = require('./welcomeConfig');
 const config = require('../../config/config');
+const { EMOJIS } = require('../../constants');
+const { logError, logInfo, logWarn } = require('../../utils/errorHandler');
+const { welcomeRepository } = require('../../database/repositories');
 
 module.exports = {
     name: 'welcome',
@@ -18,9 +21,12 @@ module.exports = {
      * @param {Client} client - Discord client
      */
     init(client) {
-        // Track welcome messages for verification
-        client.welcomeMessages = new Map(); // messageId -> { odId, odId }
-        console.log('[Welcome] Module initialized');
+        // Clean up old welcome states (older than 24 hours)
+        const cleaned = welcomeRepository.cleanupOld(24);
+        if (cleaned > 0) {
+            logInfo('Welcome', `Cleaned up ${cleaned} old welcome states`);
+        }
+        logInfo('Welcome', 'Module initialized');
     },
 
     /**
@@ -38,14 +44,14 @@ module.exports = {
                     await member.roles.add(unverifiedRole);
                 }
             } catch (error) {
-                console.error('[Welcome] Error assigning unverified role:', error);
+                logError('Welcome', 'Error assigning unverified role', error);
             }
         }
 
         // Get welcome channel
         const channel = guild.channels.cache.get(config.welcomeChannelId);
         if (!channel) {
-            console.error('[Welcome] Welcome channel not found');
+            logWarn('Welcome', 'Welcome channel not found');
             return;
         }
 
@@ -61,11 +67,15 @@ module.exports = {
             // Add verification reaction
             await message.react(welcomeConfig.verifyEmoji);
 
-            // Track this message for verification
-            member.client.welcomeMessages.set(message.id, { userId: member.id });
+            // Store in database for verification tracking
+            welcomeRepository.create({
+                messageId: message.id,
+                userId: member.id,
+                guildId: guild.id,
+            });
 
         } catch (error) {
-            console.error('[Welcome] Error sending welcome message:', error);
+            logError('Welcome', 'Error sending welcome message', error);
         }
     },
 
@@ -75,8 +85,8 @@ module.exports = {
      * @param {User} user - The user who reacted
      */
     async handleVerification(reaction, user) {
-        const client = reaction.client;
-        const welcomeData = client.welcomeMessages.get(reaction.message.id);
+        // Look up welcome state in database
+        const welcomeData = welcomeRepository.findByMessageId(reaction.message.id);
 
         // Only the welcome message owner can verify
         if (!welcomeData || welcomeData.userId !== user.id) return false;
@@ -110,12 +120,12 @@ module.exports = {
                 content: `${user} ${verifiedMsg}`
             });
 
-            // Clean up: remove from tracking
-            client.welcomeMessages.delete(reaction.message.id);
+            // Clean up: remove from database
+            welcomeRepository.deleteByMessageId(reaction.message.id);
 
             return true;
         } catch (error) {
-            console.error('[Welcome] Error during verification:', error);
+            logError('Welcome', 'Error during verification', error);
             return false;
         }
     },
@@ -127,13 +137,16 @@ module.exports = {
     buildWelcomeEmbed(member) {
         const { guild, user } = member;
 
+        const rulesChannel = config.rulesChannelId ? `<#${config.rulesChannelId}>` : '#rules';
+
         const replacePlaceholders = (text) => {
             if (!text) return text;
             return text
                 .replace(/{user}/g, `<@${user.id}>`)
                 .replace(/{username}/g, user.username)
                 .replace(/{server}/g, guild.name)
-                .replace(/{memberCount}/g, guild.memberCount.toString());
+                .replace(/{memberCount}/g, guild.memberCount.toString())
+                .replace(/{rules}/g, rulesChannel);
         };
 
         const embed = new EmbedBuilder()

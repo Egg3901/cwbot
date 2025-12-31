@@ -8,6 +8,12 @@ node_modules/
 *.log
 npm-debug.log*
 
+# Database
+data/
+*.db
+*.db-wal
+*.db-shm
+
 # OS
 .DS_Store
 Thumbs.db

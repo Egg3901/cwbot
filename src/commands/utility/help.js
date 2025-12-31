@@ -1,5 +1,14 @@
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
-const config = require('../../config/config');
+/**
+ * /help Command
+ * Dynamic interactive help system
+ * Corporate Warfare Discord Bot
+ */
+
+const { SlashCommandBuilder } = require('discord.js');
+const {
+    buildMainHelpEmbed,
+    buildCategorySelectMenu
+} = require('../../utils/helpBuilder');
 
 module.exports = {
     category: 'Utility',
@@ -8,32 +17,12 @@ module.exports = {
         .setDescription('View all available commands'),
 
     async execute(interaction, client) {
-        const categories = {};
+        const embed = buildMainHelpEmbed(client, interaction.member);
+        const row = buildCategorySelectMenu(client, interaction.member);
 
-        // Group commands by category (folder)
-        client.commands.forEach(command => {
-            const category = command.category || 'Uncategorized';
-            if (!categories[category]) {
-                categories[category] = [];
-            }
-            categories[category].push(command);
+        await interaction.reply({
+            embeds: [embed],
+            components: [row]
         });
-
-        const embed = new EmbedBuilder()
-            .setColor(config.colors.primary)
-            .setTitle('Corporate Warfare Bot - Help')
-            .setDescription('Select a category below or browse available commands.')
-            .setFooter({ text: config.embedDefaults.footer })
-            .setTimestamp();
-
-        // Add fields for each category
-        for (const [category, commands] of Object.entries(categories)) {
-            const commandList = commands
-                .map(cmd => `\`/${cmd.data.name}\` - ${cmd.data.description}`)
-                .join('\n');
-            embed.addFields({ name: category.charAt(0).toUpperCase() + category.slice(1), value: commandList || 'No commands' });
-        }
-
-        await interaction.reply({ embeds: [embed] });
     }
 };

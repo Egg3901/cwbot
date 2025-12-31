@@ -5,16 +5,13 @@
  */
 
 const { Events } = require('discord.js');
+const { getWelcomeModule } = require('../services');
 
 module.exports = {
     name: Events.GuildMemberAdd,
     async execute(member) {
-        const client = member.client;
-
         // Welcome module handles unverified role + welcome message
-        const welcomeModule = client.modules.get('welcome');
-        if (welcomeModule) {
-            await welcomeModule.handleMemberJoin(member);
-        }
+        const welcomeModule = getWelcomeModule();
+        await welcomeModule.handleMemberJoin(member);
     }
 };

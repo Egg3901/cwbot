@@ -10,12 +10,12 @@ module.exports = {
     // Welcome embed settings
     embed: {
         title: 'Welcome to {server}!',
-        description: 'Hey {user}, welcome to **{server}**!\n\nYou are member **#{memberCount}**.\n\n**To gain access to the server:**\nReact with ✅ below to verify yourself!',
+        description: 'Hey {user}, welcome to **{server}**!\n\nYou are member **#{memberCount}**.\n\n**Before you can access the server:**\n1. Read the rules in {rules}\n2. Once you have read and accept the rules, react with ✅ below',
         color: 0x5865F2,
         thumbnail: true,
-        footer: 'React below to verify'
+        footer: 'React with ✅ after reading the rules'
     },
 
     // Verified message (sent after reaction)
-    verifiedMessage: '✅ You have been verified! Check out {rules} for the server rules.'
+    verifiedMessage: '✅ Welcome to the server! You now have full access.'
 };

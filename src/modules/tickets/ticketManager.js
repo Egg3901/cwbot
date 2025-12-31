@@ -4,21 +4,22 @@
  * Corporate Warfare Discord Bot
  */
 
-const {
-    EmbedBuilder,
-    ActionRowBuilder,
-    ButtonBuilder,
-    ButtonStyle,
-    ChannelType,
-    PermissionFlagsBits
-} = require('discord.js');
+const { ChannelType, PermissionFlagsBits } = require('discord.js');
 const ticketConfig = require('./ticketConfig');
-const config = require('../../config/config');
+const { silentCatch } = require('../../utils/errorHandler');
+const { ticketRepository } = require('../../database/repositories');
+const {
+    generateTranscript,
+    buildTicketEmbed,
+    buildTicketActions,
+    buildClaimedEmbed,
+    buildClosedEmbed,
+    buildClosedActions,
+} = require('./services');
 
 class TicketManager {
     constructor(client) {
         this.client = client;
-        this.tickets = new Map(); // ticketChannelId -> ticketData
     }
 
     /**
@@ -33,7 +34,8 @@ class TicketManager {
      * @param {Role} options.staffRole - Staff role for permissions
      */
     async createTicket({ guild, member, category, subject, description, parentCategory, staffRole }) {
-        const ticketNumber = this.tickets.size + 1;
+        // Get next ticket number from database
+        const ticketNumber = ticketRepository.getNextTicketNumber(guild.id);
         const channelName = `${ticketConfig.channelPrefix}${ticketNumber}-${member.user.username}`.toLowerCase().replace(/[^a-z0-9-]/g, '');
 
         // Create ticket channel
@@ -70,38 +72,20 @@ class TicketManager {
         // Get category info
         const categoryInfo = ticketConfig.categories.find(c => c.id === category) || ticketConfig.categories[0];
 
-        // Create ticket embed
-        const embed = new EmbedBuilder()
-            .setColor(ticketConfig.colors.open)
-            .setTitle(`${categoryInfo.emoji} Ticket #${ticketNumber}`)
-            .setDescription(description || 'No description provided.')
-            .addFields(
-                { name: 'Category', value: categoryInfo.label, inline: true },
-                { name: 'Subject', value: subject || 'No subject', inline: true },
-                { name: 'Created By', value: `${member}`, inline: true }
-            )
-            .setFooter({ text: config.embedDefaults.footer })
-            .setTimestamp();
+        // Store ticket in database
+        const ticketData = ticketRepository.create({
+            channelId: channel.id,
+            guildId: guild.id,
+            creatorId: member.id,
+            category: category,
+            subject: subject,
+            description: description,
+            status: 'open',
+        });
 
-        // Create action buttons
-        const row = new ActionRowBuilder()
-            .addComponents(
-                new ButtonBuilder()
-                    .setCustomId(ticketConfig.buttons.claim)
-                    .setLabel('Claim')
-                    .setStyle(ButtonStyle.Primary)
-                    .setEmoji('✋'),
-                new ButtonBuilder()
-                    .setCustomId(ticketConfig.buttons.close)
-                    .setLabel('Close')
-                    .setStyle(ButtonStyle.Danger)
-                    .setEmoji('🔒'),
-                new ButtonBuilder()
-                    .setCustomId(ticketConfig.buttons.transcript)
-                    .setLabel('Transcript')
-                    .setStyle(ButtonStyle.Secondary)
-                    .setEmoji('📝')
-            );
+        // Create ticket embed and action buttons using services
+        const embed = buildTicketEmbed({ ticketData, categoryInfo, description, subject, member });
+        const row = buildTicketActions();
 
         const message = await channel.send({
             content: `${member} Welcome to your ticket!`,
@@ -109,24 +93,7 @@ class TicketManager {
             components: [row]
         });
 
-        await message.pin().catch(() => {});
-
-        // Store ticket data
-        const ticketData = {
-            id: ticketNumber,
-            channelId: channel.id,
-            guildId: guild.id,
-            creatorId: member.id,
-            category: category,
-            subject: subject,
-            description: description,
-            claimedBy: null,
-            createdAt: new Date(),
-            closedAt: null,
-            status: 'open'
-        };
-
-        this.tickets.set(channel.id, ticketData);
+        await silentCatch(() => message.pin());
 
         return { channel, ticketData };
     }
@@ -137,18 +104,17 @@ class TicketManager {
      * @param {GuildMember} staff - The staff member claiming
      */
     async claimTicket(channel, staff) {
-        const ticket = this.tickets.get(channel.id);
+        const ticket = ticketRepository.findByChannelId(channel.id);
         if (!ticket) return { success: false, message: 'Ticket not found.' };
         if (ticket.claimedBy) return { success: false, message: ticketConfig.messages.alreadyClaimed };
 
-        ticket.claimedBy = staff.id;
-        ticket.status = 'claimed';
+        // Update in database
+        ticketRepository.update(channel.id, {
+            claimedBy: staff.id,
+            status: 'claimed',
+        });
 
-        const embed = new EmbedBuilder()
-            .setColor(ticketConfig.colors.claimed)
-            .setDescription(`✋ ${ticketConfig.messages.ticketClaimed.replace('{user}', staff.toString())}`)
-            .setTimestamp();
-
+        const embed = buildClaimedEmbed(staff);
         await channel.send({ embeds: [embed] });
 
         return { success: true, message: 'Ticket claimed.' };
@@ -161,44 +127,26 @@ class TicketManager {
      * @param {string} reason - Close reason
      */
     async closeTicket(channel, closer, reason = 'No reason provided.') {
-        const ticket = this.tickets.get(channel.id);
+        const ticket = ticketRepository.findByChannelId(channel.id);
         if (!ticket) return { success: false, message: 'Ticket not found.' };
 
-        ticket.status = 'closed';
-        ticket.closedAt = new Date();
+        // Update in database
+        ticketRepository.update(channel.id, {
+            status: 'closed',
+            closedAt: new Date().toISOString(),
+        });
 
-        const embed = new EmbedBuilder()
-            .setColor(ticketConfig.colors.closed)
-            .setTitle('🔒 Ticket Closed')
-            .addFields(
-                { name: 'Closed By', value: `${closer}`, inline: true },
-                { name: 'Reason', value: reason, inline: true }
-            )
-            .setFooter({ text: config.embedDefaults.footer })
-            .setTimestamp();
-
-        const row = new ActionRowBuilder()
-            .addComponents(
-                new ButtonBuilder()
-                    .setCustomId(ticketConfig.buttons.transcript)
-                    .setLabel('Save Transcript')
-                    .setStyle(ButtonStyle.Secondary)
-                    .setEmoji('📝'),
-                new ButtonBuilder()
-                    .setCustomId(ticketConfig.buttons.delete)
-                    .setLabel('Delete Ticket')
-                    .setStyle(ButtonStyle.Danger)
-                    .setEmoji('🗑️')
-            );
+        const embed = buildClosedEmbed(closer, reason);
+        const row = buildClosedActions();
 
         await channel.send({ embeds: [embed], components: [row] });
 
         // Update channel permissions to remove user write access
-        const creator = await channel.guild.members.fetch(ticket.creatorId).catch(() => null);
+        const creator = await silentCatch(() => channel.guild.members.fetch(ticket.creatorId));
         if (creator) {
-            await channel.permissionOverwrites.edit(creator.id, {
+            await silentCatch(() => channel.permissionOverwrites.edit(creator.id, {
                 SendMessages: false
-            }).catch(() => {});
+            }));
         }
 
         return { success: true, message: 'Ticket closed.' };
@@ -207,24 +155,10 @@ class TicketManager {
     /**
      * Generate transcript for a ticket
      * @param {TextChannel} channel - The ticket channel
+     * @returns {Promise<string>} Formatted transcript
      */
     async generateTranscript(channel) {
-        const messages = await channel.messages.fetch({ limit: 100 });
-        const ticket = this.tickets.get(channel.id);
-
-        let transcript = `# Ticket Transcript\n`;
-        transcript += `**Ticket:** #${ticket?.id || 'Unknown'}\n`;
-        transcript += `**Channel:** ${channel.name}\n`;
-        transcript += `**Generated:** ${new Date().toISOString()}\n\n`;
-        transcript += `---\n\n`;
-
-        const sortedMessages = [...messages.values()].reverse();
-        for (const msg of sortedMessages) {
-            const timestamp = msg.createdAt.toISOString();
-            transcript += `[${timestamp}] ${msg.author.tag}: ${msg.content || '[Embed/Attachment]'}\n`;
-        }
-
-        return transcript;
+        return generateTranscript(channel);
     }
 
     /**
@@ -232,8 +166,8 @@ class TicketManager {
      * @param {TextChannel} channel - The ticket channel
      */
     async deleteTicket(channel) {
-        this.tickets.delete(channel.id);
-        await channel.delete().catch(() => {});
+        ticketRepository.deleteByChannelId(channel.id);
+        await silentCatch(() => channel.delete());
         return { success: true };
     }
 
@@ -242,7 +176,7 @@ class TicketManager {
      * @param {string} channelId - The channel ID
      */
     getTicket(channelId) {
-        return this.tickets.get(channelId);
+        return ticketRepository.findByChannelId(channelId);
     }
 
     /**
@@ -250,7 +184,7 @@ class TicketManager {
      * @param {string} channelId - The channel ID
      */
     isTicket(channelId) {
-        return this.tickets.has(channelId);
+        return ticketRepository.isTicket(channelId);
     }
 }
 

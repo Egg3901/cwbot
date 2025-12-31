@@ -8,6 +8,7 @@ const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('disc
 const config = require('../../config/config');
 const ticketConfig = require('../../modules/tickets/ticketConfig');
 const { createTicketSelectionUIWithFields } = require('../../utils/ticketUI');
+const { getTicketIntroMessages } = require('../../services');
 
 module.exports = {
     category: 'Tickets',
@@ -80,10 +81,7 @@ module.exports = {
         await message.react(introConfig.emoji);
 
         // Store message ID for reaction handling
-        if (!client.ticketIntroMessages) {
-            client.ticketIntroMessages = new Set();
-        }
-        client.ticketIntroMessages.add(message.id);
+        getTicketIntroMessages().add(message.id);
 
         await interaction.reply({
             content: `✅ Ticket intro posted! Users can react with ${introConfig.emoji} to create a ticket.`,

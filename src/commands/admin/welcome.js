@@ -6,6 +6,7 @@
 
 const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
 const config = require('../../config/config');
+const { getWelcomeModule } = require('../../services');
 
 module.exports = {
     category: 'Admin',
@@ -22,13 +23,9 @@ module.exports = {
                 .setDescription('View current welcome settings')
         ),
 
-    async execute(interaction, client) {
+    async execute(interaction) {
         const sub = interaction.options.getSubcommand();
-        const welcomeModule = client.modules.get('welcome');
-
-        if (!welcomeModule) {
-            return interaction.reply({ content: '❌ Welcome module not loaded.', ephemeral: true });
-        }
+        const welcomeModule = getWelcomeModule();
 
         if (sub === 'test') {
             const embed = welcomeModule.buildWelcomeEmbed(interaction.member);
