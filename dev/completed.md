@@ -4,6 +4,16 @@
 
 ---
 
+## [FID-20251230-003] Welcome Messages Module
+**Status:** COMPLETED **Priority:** HIGH **Complexity:** 2
+**Created:** 2025-12-30 **Completed:** 2025-12-30
+
+**Description:** Welcome message system with configurable channel, auto-role, and placeholders
+**Files:** 4 new, 1 modified | **LOC:** 275 lines
+**Time:** Est 30m, Actual ~15m
+
+---
+
 ## [FID-20241230-002] Ticket Intro Command
 **Status:** COMPLETED **Priority:** HIGH **Complexity:** 2
 **Created:** 2024-12-30 **Completed:** 2024-12-30

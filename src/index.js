@@ -33,5 +33,9 @@ const ticketsModule = require('./modules/tickets');
 ticketsModule.init(client);
 client.modules.set(ticketsModule.name, ticketsModule);
 
+const welcomeModule = require('./modules/welcome');
+welcomeModule.init(client);
+client.modules.set(welcomeModule.name, welcomeModule);
+
 // Login
 client.login(config.token);

@@ -1,22 +1,20 @@
 /**
  * Message Reaction Add Event
- * Handles ticket creation via reactions
+ * Handles ticket creation and welcome verification via reactions
  * Corporate Warfare Discord Bot
  */
 
-const { Events, EmbedBuilder, ActionRowBuilder, StringSelectMenuBuilder } = require('discord.js');
+const { Events } = require('discord.js');
 const ticketConfig = require('../modules/tickets/ticketConfig');
-const config = require('../config/config');
+const welcomeConfig = require('../modules/welcome/welcomeConfig');
+const { createTicketSelectionUI } = require('../utils/ticketUI');
 
 module.exports = {
     name: Events.MessageReactionAdd,
-    async execute(reaction, user, client) {
-        // Ignore bot reactions
+    async execute(reaction, user) {
         if (user.bot) return;
 
-        console.log(`[Reactions] Reaction received: ${reaction.emoji.name} from ${user.tag}`);
-
-        // Handle partial reactions (for uncached messages)
+        // Handle partials
         if (reaction.partial) {
             try {
                 await reaction.fetch();
@@ -26,7 +24,6 @@ module.exports = {
             }
         }
 
-        // Handle partial messages
         if (reaction.message.partial) {
             try {
                 await reaction.message.fetch();
@@ -36,94 +33,58 @@ module.exports = {
             }
         }
 
-        // Debug: log emoji comparison
-        console.log(`[Reactions] Emoji: "${reaction.emoji.name}" vs config: "${ticketConfig.intro.emoji}"`);
+        const client = reaction.client;
+        if (!client.user) return;
 
-        // Check if correct emoji (compare by name or by the actual character)
-        const isTicketEmoji = reaction.emoji.name === ticketConfig.intro.emoji ||
-                              reaction.emoji.name === '🎫' ||
-                              reaction.emoji.toString() === '🎫';
+        const emojiName = reaction.emoji.name;
 
-        if (!isTicketEmoji) {
-            console.log('[Reactions] Wrong emoji, ignoring');
-            return;
+        // Handle welcome verification
+        if (emojiName === '✅' || reaction.emoji.toString() === welcomeConfig.verifyEmoji) {
+            const welcomeModule = client.modules.get('welcome');
+            if (welcomeModule && client.welcomeMessages?.has(reaction.message.id)) {
+                await welcomeModule.handleVerification(reaction, user);
+                return;
+            }
         }
 
-        // Ensure client is ready
-        if (!client.user) {
-            console.log('[Reactions] Client not ready');
-            return;
-        }
+        // Handle ticket creation
+        if (emojiName === '🎫' || reaction.emoji.toString() === '🎫') {
+            const isIntroMessage = client.ticketIntroMessages?.has(reaction.message.id) ||
+                (reaction.message.author?.id === client.user.id &&
+                 reaction.message.embeds?.[0]?.title?.includes(ticketConfig.intro.title));
 
-        // Debug: check message info
-        console.log(`[Reactions] Message author: ${reaction.message.author?.id}, Bot: ${client.user.id}`);
-        console.log(`[Reactions] In Set: ${client.ticketIntroMessages?.has(reaction.message.id)}`);
-        console.log(`[Reactions] Embed title: ${reaction.message.embeds?.[0]?.title}`);
+            if (!isIntroMessage) return;
 
-        // Check if this is a ticket intro message (by Set OR by embed content)
-        const isIntroMessage = client.ticketIntroMessages?.has(reaction.message.id) ||
-            (reaction.message.author?.id === client.user.id &&
-             reaction.message.embeds?.[0]?.title?.includes(ticketConfig.intro.title));
+            // Remove user's reaction
+            try {
+                await reaction.users.remove(user.id);
+            } catch (error) {
+                // Silently fail
+            }
 
-        if (!isIntroMessage) {
-            console.log('[Reactions] Not an intro message, ignoring');
-            return;
-        }
+            // Send ticket creation menu
+            try {
+                const { embed, row } = createTicketSelectionUI();
+                const channel = reaction.message.channel;
 
-        console.log(`[Tickets] Reaction from ${user.tag} on intro message`);
+                const reply = await channel.send({
+                    content: `${user}`,
+                    embeds: [embed],
+                    components: [row]
+                });
 
-        // Remove user's reaction
-        try {
-            await reaction.users.remove(user.id);
-        } catch (error) {
-            console.error('[Reactions] Error removing reaction:', error);
-        }
+                // Auto-delete after 60 seconds
+                setTimeout(async () => {
+                    try {
+                        await reply.delete();
+                    } catch (e) {
+                        // Already deleted
+                    }
+                }, 60000);
 
-        // Send ticket creation menu to user
-        try {
-            const options = ticketConfig.categories.map(cat => ({
-                label: cat.label,
-                description: cat.description,
-                value: cat.id,
-                emoji: cat.emoji
-            }));
-
-            const selectMenu = new StringSelectMenuBuilder()
-                .setCustomId('ticket_category_select')
-                .setPlaceholder('Select a ticket category')
-                .addOptions(options);
-
-            const row = new ActionRowBuilder().addComponents(selectMenu);
-
-            const embed = new EmbedBuilder()
-                .setColor(config.colors.primary)
-                .setTitle('🎫 Create a Ticket')
-                .setDescription('Please select a category for your ticket below.\n\nA private channel will be created for you to discuss your issue with our staff.')
-                .setFooter({ text: config.embedDefaults.footer })
-                .setTimestamp();
-
-            // Send ephemeral-like DM or channel message
-            const channel = reaction.message.channel;
-            const member = await reaction.message.guild.members.fetch(user.id);
-
-            // Send message that auto-deletes
-            const reply = await channel.send({
-                content: `${user}`,
-                embeds: [embed],
-                components: [row]
-            });
-
-            // Delete after 60 seconds if not interacted with
-            setTimeout(async () => {
-                try {
-                    await reply.delete();
-                } catch (e) {
-                    // Message may already be deleted
-                }
-            }, 60000);
-
-        } catch (error) {
-            console.error('[Reactions] Error sending ticket menu:', error);
+            } catch (error) {
+                console.error('[Reactions] Error sending ticket menu:', error);
+            }
         }
     }
 };

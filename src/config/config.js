@@ -5,6 +5,14 @@ module.exports = {
     clientId: process.env.CLIENT_ID,
     guildId: process.env.GUILD_ID,
 
+    // Channel IDs
+    welcomeChannelId: process.env.WELCOME_CHANNEL,
+    rulesChannelId: process.env.RULES_CHANNEL,
+
+    // Role IDs
+    memberRoleId: process.env.MEMBER_ROLE,
+    unverifiedRoleId: process.env.UNVERIFIED_ROLE,
+
     // Bot settings
     colors: {
         primary: 0x5865F2,    // Discord Blurple
