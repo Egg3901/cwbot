@@ -1,7 +1,7 @@
-const { Client, GatewayIntentBits, Collection } = require('discord.js');
+const { Client, GatewayIntentBits, Collection, Partials } = require('discord.js');
 const config = require('./config/config');
 
-// Create client with necessary intents
+// Create client with necessary intents and partials
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -9,8 +9,16 @@ const client = new Client({
         GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildMessageReactions,
         GatewayIntentBits.MessageContent
+    ],
+    partials: [
+        Partials.Message,
+        Partials.Channel,
+        Partials.Reaction
     ]
 });
+
+// Track ticket intro messages (persists until restart)
+client.ticketIntroMessages = new Set();
 
 // Collections for commands and modules
 client.commands = new Collection();

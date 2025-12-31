@@ -46,5 +46,13 @@ module.exports = {
     modals: {
         create: 'ticket_create_modal',
         closeReason: 'ticket_close_reason_modal'
+    },
+
+    // Intro/Reaction settings
+    intro: {
+        emoji: '🎫',
+        title: 'Corporate Warfare Support',
+        description: 'Need help? We\'re here for you!\n\n**How to create a ticket:**\nReact with 🎫 below to open a support ticket.\n\n**What happens next:**\n• A private channel will be created for you\n• Our staff will assist you as soon as possible\n• Please be patient and provide details about your issue',
+        footer: 'React below to create a ticket'
     }
 };
