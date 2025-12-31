@@ -65,25 +65,35 @@ module.exports = {
                 // Silently fail
             }
 
-            // Send ticket creation menu
+            // Send ticket creation menu via DM (ephemeral-like)
             try {
                 const { embed, row } = createTicketSelectionUI();
-                const channel = reaction.message.channel;
 
-                const reply = await channel.send({
-                    content: `${user}`,
-                    embeds: [embed],
-                    components: [row]
-                });
+                // Try to DM the user
+                try {
+                    await user.send({
+                        content: `You requested to create a ticket in **${reaction.message.guild.name}**:`,
+                        embeds: [embed],
+                        components: [row]
+                    });
+                } catch (dmError) {
+                    // If DMs are disabled, fallback to channel message with quick delete
+                    const channel = reaction.message.channel;
+                    const reply = await channel.send({
+                        content: `${user} *(Unable to DM - this message will auto-delete)*`,
+                        embeds: [embed],
+                        components: [row]
+                    });
 
-                // Auto-delete after 60 seconds
-                setTimeout(async () => {
-                    try {
-                        await reply.delete();
-                    } catch (e) {
-                        // Already deleted
-                    }
-                }, 60000);
+                    // Auto-delete after 30 seconds
+                    setTimeout(async () => {
+                        try {
+                            await reply.delete();
+                        } catch (e) {
+                            // Already deleted
+                        }
+                    }, 30000);
+                }
 
             } catch (error) {
                 console.error('[Reactions] Error sending ticket menu:', error);

@@ -129,6 +129,7 @@ class TicketManager {
     async closeTicket(channel, closer, reason = 'No reason provided.') {
         const ticket = ticketRepository.findByChannelId(channel.id);
         if (!ticket) return { success: false, message: 'Ticket not found.' };
+        if (ticket.status === 'closed') return { success: false, message: 'This ticket is already closed.' };
 
         // Update in database
         ticketRepository.update(channel.id, {

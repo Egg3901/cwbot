@@ -4,11 +4,10 @@
  * Corporate Warfare Discord Bot
  */
 
-const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const config = require('../../config/config');
 const ticketConfig = require('../../modules/tickets/ticketConfig');
 const { createTicketSelectionUIWithFields } = require('../../utils/ticketUI');
-const { getTicketIntroMessages } = require('../../services');
 
 module.exports = {
     category: 'Tickets',
@@ -74,17 +73,21 @@ module.exports = {
             .setFooter({ text: introConfig.footer })
             .setTimestamp();
 
-        // Send to channel (not ephemeral)
-        const message = await interaction.channel.send({ embeds: [embed] });
+        // Create ticket button
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId(ticketConfig.buttons.create)
+                    .setLabel('Create Ticket')
+                    .setStyle(ButtonStyle.Primary)
+                    .setEmoji(introConfig.emoji)
+            );
 
-        // Add reaction
-        await message.react(introConfig.emoji);
-
-        // Store message ID for reaction handling
-        getTicketIntroMessages().add(message.id);
+        // Send to channel with button
+        await interaction.channel.send({ embeds: [embed], components: [row] });
 
         await interaction.reply({
-            content: `✅ Ticket intro posted! Users can react with ${introConfig.emoji} to create a ticket.`,
+            content: '✅ Ticket intro posted! Users can click the button to create a ticket.',
             ephemeral: true
         });
     }

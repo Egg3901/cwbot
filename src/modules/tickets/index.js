@@ -17,6 +17,7 @@ const {
 } = require('discord.js');
 const { EMOJIS, TIMEOUTS } = require('../../constants');
 const { logError, logInfo } = require('../../utils/errorHandler');
+const { createTicketSelectionUIWithFields } = require('../../utils/ticketUI');
 
 /**
  * Module-local ticket manager reference
@@ -52,6 +53,12 @@ module.exports = {
     async handleButton(interaction) {
         const { customId } = interaction;
 
+        // Create ticket - show category selection (ephemeral)
+        if (customId === ticketConfig.buttons.create) {
+            const { embed, row } = createTicketSelectionUIWithFields();
+            return interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
+        }
+
         // Claim ticket
         if (customId === ticketConfig.buttons.claim) {
             const result = await ticketManager.claimTicket(interaction.channel, interaction.member);
@@ -63,6 +70,12 @@ module.exports = {
 
         // Close ticket - show confirmation
         if (customId === ticketConfig.buttons.close) {
+            // Check if already closed
+            const ticket = ticketManager.getTicket(interaction.channel.id);
+            if (ticket?.status === 'closed') {
+                return interaction.reply({ content: `${EMOJIS.ERROR} This ticket is already closed.`, ephemeral: true });
+            }
+
             const row = new ActionRowBuilder()
                 .addComponents(
                     new ButtonBuilder()
@@ -84,7 +97,43 @@ module.exports = {
 
         // Confirm close
         if (customId === ticketConfig.buttons.confirmClose) {
-            await ticketManager.closeTicket(interaction.channel, interaction.member);
+            const result = await ticketManager.closeTicket(interaction.channel, interaction.member);
+            if (!result.success) {
+                return interaction.update({ content: `${EMOJIS.ERROR} ${result.message}`, components: [] });
+            }
+
+            // Disable buttons on the original pinned ticket message
+            try {
+                const pinnedMessages = await interaction.channel.messages.fetchPinned();
+                const ticketMsg = pinnedMessages.find(m => m.author.id === interaction.client.user.id && m.embeds.length > 0);
+                if (ticketMsg) {
+                    const disabledRow = new ActionRowBuilder()
+                        .addComponents(
+                            new ButtonBuilder()
+                                .setCustomId(ticketConfig.buttons.claim)
+                                .setLabel('Claim')
+                                .setStyle(ButtonStyle.Primary)
+                                .setEmoji(EMOJIS.CLAIM)
+                                .setDisabled(true),
+                            new ButtonBuilder()
+                                .setCustomId(ticketConfig.buttons.close)
+                                .setLabel('Closed')
+                                .setStyle(ButtonStyle.Danger)
+                                .setEmoji(EMOJIS.CLOSE)
+                                .setDisabled(true),
+                            new ButtonBuilder()
+                                .setCustomId(ticketConfig.buttons.transcript)
+                                .setLabel('Transcript')
+                                .setStyle(ButtonStyle.Secondary)
+                                .setEmoji(EMOJIS.TRANSCRIPT)
+                                .setDisabled(true)
+                        );
+                    await ticketMsg.edit({ components: [disabledRow] });
+                }
+            } catch (e) {
+                // Silently fail if can't update original message
+            }
+
             return interaction.update({ content: `${EMOJIS.CLOSE} Ticket closed.`, components: [] });
         }
 
