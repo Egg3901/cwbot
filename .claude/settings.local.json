@@ -3,7 +3,8 @@
     "allow": [
       "Bash(npm init:*)",
       "Bash(npm install:*)",
-      "Bash(node --check:*)"
+      "Bash(node --check:*)",
+      "Bash(if not exist \"src\\\\services\\\\api\" mkdir \"src\\\\services\\\\api\")"
     ]
   }
 }
