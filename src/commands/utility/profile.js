@@ -5,7 +5,7 @@
  */
 
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { fetchProfile, formatProfileForDisplay, getProfileUrl } = require('../../services/corporateWarfareApi');
+const { fetchProfile, formatProfileForDisplay, getProfileUrl, formatNumber, formatCurrency } = require('../../services/corporateWarfareApi');
 const config = require('../../config/config');
 const { EMOJIS } = require('../../constants');
 
@@ -36,24 +36,32 @@ module.exports = {
         }
 
         const profile = formatProfileForDisplay(rawProfile);
+        const statusEmoji = profile.isOnline ? '🟢' : '⚫';
+        const statusText = profile.isOnline ? 'Online' : 'Offline';
 
-        // Build profile embed
+        // Build profile embed with improved formatting
         const embed = new EmbedBuilder()
             .setColor(profile.isOnline ? config.colors.success : config.colors.primary)
-            .setTitle(profile.playerName)
-            .setURL(getProfileUrl(profile.profileSlug))
+            .setAuthor({
+                name: profile.playerName,
+                url: getProfileUrl(profile.profileSlug),
+                iconURL: profile.profileImageUrl || undefined,
+            })
             .setDescription(profile.bio || '*No bio set*')
             .addFields(
-                { name: 'State', value: profile.startingState || 'Unknown', inline: true },
-                { name: 'Age', value: profile.age?.toString() || 'Unknown', inline: true },
-                { name: 'Gender', value: profile.gender || 'Unknown', inline: true },
-                { name: 'Actions', value: profile.actions?.toLocaleString() || '0', inline: true },
-                { name: 'Status', value: profile.isOnline ? '🟢 Online' : '⚫ Offline', inline: true },
+                { name: '💵 Cash', value: formatCurrency(profile.cash), inline: true },
+                { name: '📈 Portfolio', value: formatCurrency(profile.portfolioValue), inline: true },
+                { name: '💰 Net Worth', value: formatCurrency(profile.netWorth), inline: true },
+                { name: '📍 Location', value: profile.startingState || 'Unknown', inline: true },
+                { name: '🎂 Age', value: profile.age?.toString() || 'Unknown', inline: true },
+                { name: '⚧ Gender', value: profile.gender || 'Unknown', inline: true },
+                { name: '⚡ Actions', value: formatNumber(profile.actions), inline: true },
+                { name: `${statusEmoji} Status`, value: statusText, inline: true },
             )
             .setFooter({ text: `Profile ID: ${profile.profileId} • ${config.embedDefaults.footer}` })
             .setTimestamp();
 
-        // Add profile image if available
+        // Add profile image as thumbnail if available
         if (profile.profileImageUrl) {
             embed.setThumbnail(profile.profileImageUrl);
         }
@@ -61,7 +69,7 @@ module.exports = {
         // Add last seen if offline
         if (!profile.isOnline && profile.lastSeenAt) {
             embed.addFields({
-                name: 'Last Seen',
+                name: '🕐 Last Seen',
                 value: `<t:${Math.floor(profile.lastSeenAt.getTime() / 1000)}:R>`,
                 inline: true
             });
@@ -70,7 +78,7 @@ module.exports = {
         // Add account age
         if (profile.createdAt) {
             embed.addFields({
-                name: 'Playing Since',
+                name: '📅 Playing Since',
                 value: `<t:${Math.floor(profile.createdAt.getTime() / 1000)}:D>`,
                 inline: true
             });
