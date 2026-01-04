@@ -21,6 +21,17 @@ module.exports = {
      * @param {Client} client - Discord client
      */
     init(client) {
+        // Validate role configuration
+        if (!config.memberRoleId) {
+            logWarn('Welcome', 'MEMBER_ROLE not configured in .env - verification will not assign member role');
+        }
+        if (!config.unverifiedRoleId) {
+            logWarn('Welcome', 'UNVERIFIED_ROLE not configured in .env - new members will not get unverified role');
+        }
+        if (!config.welcomeChannelId) {
+            logWarn('Welcome', 'WELCOME_CHANNEL not configured in .env - welcome messages disabled');
+        }
+
         // Clean up old welcome states (older than 24 hours)
         const cleaned = welcomeRepository.cleanupOld(24);
         if (cleaned > 0) {
@@ -88,28 +99,49 @@ module.exports = {
         // Look up welcome state in database
         const welcomeData = welcomeRepository.findByMessageId(reaction.message.id);
 
+        if (!welcomeData) {
+            logWarn('Welcome', `Verification attempted on message ${reaction.message.id} but no welcome data found`);
+            return false;
+        }
+
         // Only the welcome message owner can verify
-        if (!welcomeData || welcomeData.userId !== user.id) return false;
+        if (welcomeData.userId !== user.id) {
+            // Silent - expected behavior for non-owners reacting
+            return false;
+        }
 
         const guild = reaction.message.guild;
         const member = await guild.members.fetch(user.id).catch(() => null);
-        if (!member) return false;
+        if (!member) {
+            logWarn('Welcome', `Could not fetch member ${user.id} for verification`);
+            return false;
+        }
 
         try {
             // Remove unverified role
             if (config.unverifiedRoleId) {
                 const unverifiedRole = guild.roles.cache.get(config.unverifiedRoleId);
-                if (unverifiedRole && member.roles.cache.has(unverifiedRole.id)) {
+                if (!unverifiedRole) {
+                    logWarn('Welcome', `Unverified role ${config.unverifiedRoleId} not found in guild`);
+                } else if (member.roles.cache.has(unverifiedRole.id)) {
                     await member.roles.remove(unverifiedRole);
+                    logInfo('Welcome', `Removed unverified role from ${user.username}`);
                 }
+            } else {
+                logWarn('Welcome', 'UNVERIFIED_ROLE not configured - skipping removal');
             }
 
             // Add member role
             if (config.memberRoleId) {
                 const memberRole = guild.roles.cache.get(config.memberRoleId);
-                if (memberRole) {
+                if (!memberRole) {
+                    logWarn('Welcome', `Member role ${config.memberRoleId} not found in guild`);
+                } else {
                     await member.roles.add(memberRole);
+                    logInfo('Welcome', `Added member role to ${user.username}`);
                 }
+            } else {
+                logWarn('Welcome', 'MEMBER_ROLE not configured - skipping assignment');
             }
 
             // Send verification confirmation
@@ -123,9 +155,10 @@ module.exports = {
             // Clean up: remove from database
             welcomeRepository.deleteByMessageId(reaction.message.id);
 
+            logInfo('Welcome', `User ${user.username} verified successfully`);
             return true;
         } catch (error) {
-            logError('Welcome', 'Error during verification', error);
+            logError('Welcome', `Error during verification for ${user.username}`, error);
             return false;
         }
     },
