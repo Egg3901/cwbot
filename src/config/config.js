@@ -4,6 +4,8 @@ module.exports = {
     token: process.env.DISCORD_TOKEN,
     clientId: process.env.CLIENT_ID,
     guildId: process.env.GUILD_ID,
+    discordBotApiToken: process.env.DISCORD_BOT_API_TOKEN,
+    apiBaseUrl: process.env.GAME_API_BASE_URL || 'https://corporate-warfare.com/api',
 
     // Channel IDs
     welcomeChannelId: process.env.WELCOME_CHANNEL,

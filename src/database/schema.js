@@ -10,7 +10,7 @@ const { logInfo } = require('../utils/errorHandler');
 /**
  * Schema version for migrations
  */
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 3;
 
 /**
  * Initialize database schema
@@ -46,6 +46,8 @@ function initSchema(db) {
 function runMigrations(db, fromVersion) {
     const migrations = [
         migration001_initial,
+        migration002_ticketIntroMessages,
+        migration003_users,
     ];
 
     for (let i = fromVersion; i < migrations.length; i++) {
@@ -121,6 +123,56 @@ function migration001_initial(db) {
     `);
 
     logInfo('Database', 'Created tables: tickets, welcome_states, server_config');
+}
+
+/**
+ * Migration 002: Ticket intro messages
+ * Persists ticket intro message IDs for restart recovery
+ */
+function migration002_ticketIntroMessages(db) {
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS ticket_intro_messages (
+            message_id TEXT PRIMARY KEY,
+            guild_id TEXT NOT NULL,
+            channel_id TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
+    db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_intro_guild ON ticket_intro_messages(guild_id);
+    `);
+
+    logInfo('Database', 'Created table: ticket_intro_messages');
+}
+
+/**
+ * Migration 003: Users table
+ * Stores Discord to Game Profile mappings
+ */
+function migration003_users(db) {
+    db.exec(`
+        CREATE TABLE IF NOT EXISTS users (
+            discord_id TEXT PRIMARY KEY,
+            user_id INTEGER,
+            profile_id INTEGER,
+            username TEXT,
+            player_name TEXT,
+            profile_slug TEXT,
+            profile_image_url TEXT,
+            discord_username TEXT,
+            discord_discriminator TEXT,
+            discord_avatar TEXT,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
+
+    db.exec(`
+        CREATE INDEX IF NOT EXISTS idx_users_profile_id ON users(profile_id);
+        CREATE INDEX IF NOT EXISTS idx_users_player_name ON users(player_name);
+    `);
+
+    logInfo('Database', 'Created table: users');
 }
 
 module.exports = {

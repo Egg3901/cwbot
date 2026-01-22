@@ -6,6 +6,7 @@
  */
 
 const container = require('./container');
+const { ticketIntroRepository } = require('../database/repositories');
 
 /**
  * Register all services with the container
@@ -25,9 +26,9 @@ function registerServices() {
         return welcomeModule;
     });
 
-    // Ticket intro messages tracking (in-memory, ephemeral)
+    // Ticket intro messages tracking (persisted to database)
     container.register('ticketIntroMessages', () => {
-        return new Set();
+        return ticketIntroRepository;
     });
 }
 
@@ -66,8 +67,8 @@ function getWelcomeModule() {
 }
 
 /**
- * Get the ticket intro messages set
- * @returns {Set<string>}
+ * Get the ticket intro messages repository
+ * @returns {Object} Repository with add, has, remove methods
  */
 function getTicketIntroMessages() {
     return container.getService('ticketIntroMessages');

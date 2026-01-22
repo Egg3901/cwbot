@@ -5,26 +5,127 @@
  */
 
 const { logError, logInfo } = require('../utils/errorHandler');
+const config = require('../config/config');
 
-const API_BASE_URL = 'https://corporate-warfare.com/api';
+const API_BASE_URL = config.apiBaseUrl;
+
+// Cache configuration (TTL in milliseconds)
+const CACHE_CONFIG = {
+    profile: 60 * 1000,        // 1 minute for profiles
+    corporation: 60 * 1000,    // 1 minute for corporations
+    leaderboard: 30 * 1000,    // 30 seconds for leaderboard
+    market: 30 * 1000,         // 30 seconds for market data
+    time: 10 * 1000,           // 10 seconds for game time
+    maxSize: 500,              // Max cache entries before cleanup
+};
+
+// Simple TTL cache
+const cache = new Map();
+
+/**
+ * Get cached value if not expired
+ * @param {string} key - Cache key
+ * @returns {*} Cached value or undefined
+ */
+function getCached(key) {
+    const entry = cache.get(key);
+    if (!entry) return undefined;
+
+    if (Date.now() > entry.expiresAt) {
+        cache.delete(key);
+        return undefined;
+    }
+    return entry.value;
+}
+
+/**
+ * Set cache value with TTL
+ * @param {string} key - Cache key
+ * @param {*} value - Value to cache
+ * @param {number} ttl - Time to live in milliseconds
+ */
+function setCache(key, value, ttl) {
+    // Cleanup if cache is too large
+    if (cache.size >= CACHE_CONFIG.maxSize) {
+        const now = Date.now();
+        for (const [k, v] of cache) {
+            if (now > v.expiresAt) {
+                cache.delete(k);
+            }
+        }
+        // If still too large, remove oldest entries
+        if (cache.size >= CACHE_CONFIG.maxSize) {
+            const entries = [...cache.entries()].sort((a, b) => a[1].expiresAt - b[1].expiresAt);
+            const toDelete = entries.slice(0, Math.floor(CACHE_CONFIG.maxSize / 4));
+            toDelete.forEach(([k]) => cache.delete(k));
+        }
+    }
+
+    cache.set(key, {
+        value,
+        expiresAt: Date.now() + ttl,
+    });
+}
+
+/**
+ * Clear all cached data
+ */
+function clearCache() {
+    cache.clear();
+    logInfo('CW API', 'Cache cleared');
+}
+
+/**
+ * Get cache statistics
+ * @returns {Object} Cache stats
+ */
+function getCacheStats() {
+    const now = Date.now();
+    let valid = 0;
+    let expired = 0;
+
+    for (const [, entry] of cache) {
+        if (now > entry.expiresAt) {
+            expired++;
+        } else {
+            valid++;
+        }
+    }
+
+    return { total: cache.size, valid, expired };
+}
 
 /**
  * Fetch a player profile by ID
  * @param {number|string} profileId - The profile ID to fetch
+ * @param {boolean} [bypassCache=false] - Skip cache and fetch fresh data
  * @returns {Promise<Object|null>} Profile data or null if not found
  */
-async function fetchProfile(profileId) {
+async function fetchProfile(profileId, bypassCache = false) {
+    const cacheKey = `profile:${profileId}`;
+
+    // Check cache first
+    if (!bypassCache) {
+        const cached = getCached(cacheKey);
+        if (cached !== undefined) {
+            return cached;
+        }
+    }
+
     try {
         const response = await fetch(`${API_BASE_URL}/profile/${profileId}`);
 
         if (!response.ok) {
             if (response.status === 404) {
+                // Cache null result briefly to avoid repeated 404s
+                setCache(cacheKey, null, 10 * 1000);
                 return null;
             }
             throw new Error(`API responded with status ${response.status}`);
         }
 
         const data = await response.json();
+        setCache(cacheKey, data, CACHE_CONFIG.profile);
         return data;
     } catch (error) {
         logError('CW API', `Failed to fetch profile ${profileId}`, error);
@@ -70,20 +171,33 @@ function getProfileUrl(profileSlug) {
 /**
  * Fetch a corporation by ID
  * @param {number|string} corporationId - The corporation ID to fetch
+ * @param {boolean} [bypassCache=false] - Skip cache and fetch fresh data
  * @returns {Promise<Object|null>} Corporation data or null if not found
  */
-async function fetchCorporation(corporationId) {
+async function fetchCorporation(corporationId, bypassCache = false) {
+    const cacheKey = `corporation:${corporationId}`;
+
+    // Check cache first
+    if (!bypassCache) {
+        const cached = getCached(cacheKey);
+        if (cached !== undefined) {
+            return cached;
+        }
+    }
+
     try {
         const response = await fetch(`${API_BASE_URL}/corporation/${corporationId}`);
 
         if (!response.ok) {
             if (response.status === 404) {
+                setCache(cacheKey, null, 10 * 1000);
                 return null;
             }
             throw new Error(`API responded with status ${response.status}`);
         }
 
         const data = await response.json();
+        setCache(cacheKey, data, CACHE_CONFIG.corporation);
         return data;
     } catch (error) {
         logError('CW API', `Failed to fetch corporation ${corporationId}`, error);
@@ -157,13 +271,41 @@ function formatNumber(num) {
 }
 
 /**
+ * Format leaderboard entry
+ * @param {Object} entry - Raw leaderboard entry
+ * @returns {Object} Formatted entry
+ */
+function formatLeaderboardEntry(entry) {
+    return {
+        rank: entry.rank,
+        playerName: entry.player_name,
+        profileSlug: entry.profile_slug,
+        profileId: entry.profile_id,
+        netWorth: entry.net_worth,
+        cash: entry.cash,
+        portfolioValue: entry.portfolio_value
+    };
+}
+
+/**
  * Fetch leaderboard data
  * @param {number} page - Page number (1-indexed)
  * @param {string} sort - Sort field: 'net_worth', 'cash', or 'portfolio_value'
  * @param {number} limit - Number of entries per page
+ * @param {boolean} [bypassCache=false] - Skip cache and fetch fresh data
  * @returns {Promise<Object|null>} Leaderboard data or null if error
  */
-async function fetchLeaderboard(page = 1, sort = 'net_worth', limit = 10) {
+async function fetchLeaderboard(page = 1, sort = 'net_worth', limit = 10, bypassCache = false) {
+    const cacheKey = `leaderboard:${page}:${sort}:${limit}`;
+
+    // Check cache first
+    if (!bypassCache) {
+        const cached = getCached(cacheKey);
+        if (cached !== undefined) {
+            return cached;
+        }
+    }
+
     try {
         const response = await fetch(
             `${API_BASE_URL}/leaderboard?page=${page}&limit=${limit}&sort=${sort}`
@@ -174,29 +316,126 @@ async function fetchLeaderboard(page = 1, sort = 'net_worth', limit = 10) {
         }
 
         const data = await response.json();
+        setCache(cacheKey, data, CACHE_CONFIG.leaderboard);
         return data;
     } catch (error) {
-        logError('CW API', `Failed to fetch leaderboard (page ${page}, sort ${sort})`, error);
+        logError('CW API', `Failed to fetch leaderboard`, error);
         return null;
     }
 }
 
 /**
- * Format leaderboard entry for display (excludes sensitive login info)
- * @param {Object} entry - Raw leaderboard entry from API
- * @returns {Object} Formatted entry safe for display
+ * Fetch current game time
+ * @param {boolean} [bypassCache=false] - Skip cache and fetch fresh data
+ * @returns {Promise<Object|null>} Game time object or null
  */
-function formatLeaderboardEntry(entry) {
-    return {
-        rank: entry.rank,
-        playerName: entry.player_name,
-        profileId: entry.profile_id,
-        profileSlug: entry.profile_slug,
-        profileImageUrl: entry.profile_image_url,
-        cash: entry.cash,
-        portfolioValue: entry.portfolio_value,
-        netWorth: entry.net_worth,
-    };
+async function fetchGameTime(bypassCache = false) {
+    const cacheKey = 'game:time';
+
+    if (!bypassCache) {
+        const cached = getCached(cacheKey);
+        if (cached !== undefined) return cached;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/game/time`);
+        if (!response.ok) throw new Error(`Status ${response.status}`);
+
+        const data = await response.json();
+        setCache(cacheKey, data, CACHE_CONFIG.time);
+        return data;
+    } catch (error) {
+        logError('CW API', 'Failed to fetch game time', error);
+        return null;
+    }
+}
+
+/**
+ * Fetch state market data
+ * @param {string} stateCode - Two-letter state code (e.g., 'CA')
+ * @param {boolean} [bypassCache=false] - Skip cache
+ * @returns {Promise<Object|null>} State data or null
+ */
+async function fetchState(stateCode, bypassCache = false) {
+    const code = stateCode.toUpperCase();
+    const cacheKey = `market:state:${code}`;
+
+    if (!bypassCache) {
+        const cached = getCached(cacheKey);
+        if (cached !== undefined) return cached;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/markets/states/${code}`);
+        
+        if (!response.ok) {
+            if (response.status === 404) return null;
+            throw new Error(`Status ${response.status}`);
+        }
+
+        const data = await response.json();
+        setCache(cacheKey, data, CACHE_CONFIG.market);
+        return data;
+    } catch (error) {
+        logError('CW API', `Failed to fetch state ${code}`, error);
+        return null;
+    }
+}
+
+/**
+ * Fetch commodity market data
+ * @param {boolean} [bypassCache=false] - Skip cache
+ * @returns {Promise<Array|null>} List of commodities or null
+ */
+async function fetchCommodities(bypassCache = false) {
+    const cacheKey = 'market:commodities';
+
+    if (!bypassCache) {
+        const cached = getCached(cacheKey);
+        if (cached !== undefined) return cached;
+    }
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/markets/commodities`);
+        if (!response.ok) throw new Error(`Status ${response.status}`);
+
+        const data = await response.json();
+        setCache(cacheKey, data, CACHE_CONFIG.market);
+        return data;
+    } catch (error) {
+        logError('CW API', 'Failed to fetch commodities', error);
+        return null;
+    }
+}
+
+/**
+ * Sync Discord users with the game
+ * @param {string} guildId - Discord Guild ID
+ * @param {Array} users - Array of user objects { id, username, discriminator, avatar }
+ * @returns {Promise<Object|null>} Sync result
+ */
+async function syncDiscordUsers(guildId, users) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/discord/sync`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Bot-Token': config.discordBotApiToken
+            },
+            body: JSON.stringify({ guild_id: guildId, users })
+        });
+
+        if (!response.ok) {
+            // Attempt to read error body
+            const errorText = await response.text().catch(() => 'No response body');
+            throw new Error(`Sync failed with status ${response.status} at ${API_BASE_URL}/discord/sync. Body: ${errorText.substring(0, 200)}`);
+        }
+
+        return await response.json();
+    } catch (error) {
+        logError('CW API', 'Failed to sync users', error);
+        return null;
+    }
 }
 
 module.exports = {
@@ -210,5 +449,10 @@ module.exports = {
     formatNumber,
     fetchLeaderboard,
     formatLeaderboardEntry,
-    API_BASE_URL,
+    fetchGameTime,
+    fetchState,
+    fetchCommodities,
+    syncDiscordUsers,
+    getCacheStats,
+    clearCache,
 };

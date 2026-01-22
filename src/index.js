@@ -2,11 +2,22 @@ const { Client, GatewayIntentBits, Collection, Partials } = require('discord.js'
 const config = require('./config/config');
 const { initDatabase, closeDatabase } = require('./database');
 const { initServices } = require('./services');
-const { logInfo } = require('./utils/errorHandler');
+const { logInfo, logError } = require('./utils/errorHandler');
 
 // Initialize database before anything else
 initDatabase();
 logInfo('Startup', 'Database initialized');
+
+// Global Error Handlers
+process.on('unhandledRejection', (reason, promise) => {
+    logError('Process', 'Unhandled Rejection', { reason: reason instanceof Error ? reason.stack : reason });
+});
+
+process.on('uncaughtException', (error) => {
+    logError('Process', 'Uncaught Exception', { error: error.stack });
+    // Optional: exit process if state is corrupted
+    // process.exit(1);
+});
 
 // Create client with necessary intents and partials
 const client = new Client({

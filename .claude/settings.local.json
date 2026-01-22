@@ -4,7 +4,9 @@
       "Bash(npm init:*)",
       "Bash(npm install:*)",
       "Bash(node --check:*)",
-      "Bash(if not exist \"src\\\\services\\\\api\" mkdir \"src\\\\services\\\\api\")"
+      "Bash(if not exist \"src\\\\services\\\\api\" mkdir \"src\\\\services\\\\api\")",
+      "Bash(dir /s /b \"c:\\\\Users\\\\rainf\\\\cwbot\\\\src\")",
+      "Bash(wc:*)"
     ]
   }
 }

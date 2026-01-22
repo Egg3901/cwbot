@@ -6,6 +6,7 @@
 
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { fetchProfile, formatProfileForDisplay, getProfileUrl, formatNumber, formatCurrency } = require('../../services/corporateWarfareApi');
+const { userRepository } = require('../../database/repositories');
 const config = require('../../config/config');
 const { EMOJIS } = require('../../constants');
 
@@ -17,15 +18,29 @@ module.exports = {
         .addIntegerOption(option =>
             option
                 .setName('id')
-                .setDescription('The player profile ID')
-                .setRequired(true)
+                .setDescription('The player profile ID (optional if your Discord account is linked)')
+                .setRequired(false)
                 .setMinValue(1)
         ),
 
     async execute(interaction) {
-        const profileId = interaction.options.getInteger('id');
+        let profileId = interaction.options.getInteger('id');
+        const discordUser = interaction.user;
 
         await interaction.deferReply();
+
+        // If no ID provided, look up the user's linked profile
+        if (!profileId) {
+            const linkedUser = userRepository.getByDiscordId(discordUser.id);
+            
+            if (!linkedUser) {
+                return interaction.editReply({
+                    content: `${EMOJIS.WARNING} You haven't linked your Corporate Warfare account yet!\n\nUse \`/profile <id>\` to view a specific profile, or link your account on the website to use this command without arguments.`
+                });
+            }
+            
+            profileId = linkedUser.profile_id;
+        }
 
         const rawProfile = await fetchProfile(profileId);
 

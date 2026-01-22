@@ -6,6 +6,7 @@
  */
 
 const { logError, logInfo } = require('../utils/errorHandler');
+const { getInteractionType } = require('../utils/interactionUtils');
 
 class InteractionRouter {
     constructor() {
@@ -37,7 +38,7 @@ class InteractionRouter {
      * @param {Client} client - Discord client
      */
     async route(interaction, client) {
-        const type = this.getInteractionType(interaction);
+        const type = getInteractionType(interaction);
         const handler = this.handlers.get(type);
 
         if (!handler) {
@@ -59,25 +60,10 @@ class InteractionRouter {
             await next();
         } catch (error) {
             logError('Router', `Error routing ${type} interaction`, error);
-            throw error;
+            await handleInteractionError(interaction, error, 'Router');
         }
     }
 
-    /**
-     * Determine the type of interaction
-     * @param {Interaction} interaction - Discord interaction
-     * @returns {string|null} Interaction type
-     */
-    getInteractionType(interaction) {
-        if (interaction.isChatInputCommand()) return 'command';
-        if (interaction.isButton()) return 'button';
-        if (interaction.isStringSelectMenu()) return 'selectMenu';
-        if (interaction.isModalSubmit()) return 'modal';
-        if (interaction.isAutocomplete()) return 'autocomplete';
-        if (interaction.isUserContextMenuCommand()) return 'userContext';
-        if (interaction.isMessageContextMenuCommand()) return 'messageContext';
-        return null;
-    }
 }
 
 // Singleton instance

@@ -6,6 +6,7 @@
  */
 
 const { TIMEOUTS, EMOJIS } = require('../../constants');
+const { getInteractionType } = require('../../utils/interactionUtils');
 
 // Cooldown storage: userId -> { type -> timestamp }
 const cooldowns = new Map();
@@ -88,19 +89,6 @@ async function cooldownMiddleware(interaction, client, next) {
 
     // Proceed to next middleware/handler
     await next();
-}
-
-/**
- * Determine interaction type for cooldown grouping
- * @param {Interaction} interaction - Discord interaction
- * @returns {string} Type string
- */
-function getInteractionType(interaction) {
-    if (interaction.isChatInputCommand()) return 'command';
-    if (interaction.isButton()) return 'button';
-    if (interaction.isStringSelectMenu()) return 'selectMenu';
-    if (interaction.isModalSubmit()) return 'modal';
-    return 'other';
 }
 
 /**

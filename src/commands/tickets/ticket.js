@@ -8,6 +8,7 @@ const { SlashCommandBuilder, EmbedBuilder, PermissionFlagsBits, ActionRowBuilder
 const config = require('../../config/config');
 const ticketConfig = require('../../modules/tickets/ticketConfig');
 const { createTicketSelectionUIWithFields } = require('../../utils/ticketUI');
+const { getTicketIntroMessages } = require('../../services');
 
 module.exports = {
     category: 'Tickets',
@@ -84,7 +85,11 @@ module.exports = {
             );
 
         // Send to channel with button
-        await interaction.channel.send({ embeds: [embed], components: [row] });
+        const introMessage = await interaction.channel.send({ embeds: [embed], components: [row] });
+
+        // Store intro message for persistence
+        const ticketIntroMessages = getTicketIntroMessages();
+        ticketIntroMessages.add(introMessage.id, interaction.guildId, interaction.channelId);
 
         await interaction.reply({
             content: '✅ Ticket intro posted! Users can click the button to create a ticket.',
